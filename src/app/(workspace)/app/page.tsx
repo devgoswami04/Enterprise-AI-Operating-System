@@ -10,7 +10,7 @@ import { getDashboardSnapshot } from "@/lib/data/store";
 
 export default async function AppDashboardPage() {
   const session = await requireSession();
-  const snapshot = getDashboardSnapshot(session.organizationId);
+  const snapshot = await getDashboardSnapshot(session.organizationId);
 
   return (
     <div className="grid gap-6">

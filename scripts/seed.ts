@@ -1,109 +1,131 @@
+/**
+ * Seeds the Postgres database with the demo organization, RBAC users
+ * (bcrypt-hashed passwords), sample documents (chunked + embedded through
+ * the configured EMBEDDING_PROVIDER), starter memories, and a pending
+ * tool-call approval so the cockpit has meaningful data on first login.
+ *
+ * Usage:  DATABASE_URL=postgres://... npx tsx scripts/seed.ts
+ *         (or `npm run db:seed` after docker compose up -d && npm run db:push)
+ *
+ * Idempotent: safe to run repeatedly — existing rows are detected by
+ * email/slug and skipped rather than duplicated.
+ */
 import bcrypt from "bcryptjs";
-import postgres from "postgres";
-import { chunkText, estimateTokens } from "../src/lib/ai/chunking";
-import { embedText } from "../src/lib/ai/embeddings";
-
-const databaseUrl =
-  process.env.DATABASE_URL ??
-  "postgres://enterprise_ai:enterprise_ai@localhost:5432/enterprise_ai_os";
-
-const sql = postgres(databaseUrl, { max: 1 });
-
-const organizationId = "11111111-1111-4111-8111-111111111111";
-const adminId = "22222222-2222-4222-8222-222222222222";
-const memberId = "33333333-3333-4333-8333-333333333333";
-const viewerId = "44444444-4444-4444-8444-444444444444";
-
-const docs = [
-  {
-    title: "Q2 Revenue and Risk Review",
-    mimeType: "text/markdown",
-    text: "Q2 revenue grew 18.4 percent quarter over quarter. Key risks include procurement delays, account concentration, and increasing cloud inference cost. Recommended actions include executive renewal owners, self-serve onboarding, and model-call cost caps.",
-  },
-  {
-    title: "Security and AI Tooling Policy",
-    mimeType: "text/markdown",
-    text: "High-risk actions such as sending email, creating public issues, changing calendar invites, or exporting documents require human approval. Prompt injection warnings, tool logs, and retrieval citations must be visible to administrators.",
-  },
-];
-
-function vectorLiteral(values: number[]) {
-  return `[${values.join(",")}]`;
-}
+import { eq } from "drizzle-orm";
+import { getDb, isDatabaseConfigured } from "../src/lib/db/client";
+import {
+  documents as documentsTable,
+  memberships,
+  memories as memoriesTable,
+  organizations,
+  toolCalls,
+  users,
+} from "../src/lib/db/schema";
+import { DEMO_ORG_SEED, DEMO_USER_SEEDS, SEED_DOCUMENTS } from "../src/lib/data/definitions";
+import { createDocument } from "../src/lib/db/repositories/documents";
+import { writeMemory } from "../src/lib/db/repositories/memory";
 
 async function main() {
-  await sql`CREATE EXTENSION IF NOT EXISTS vector`;
-
-  await sql`
-    INSERT INTO organizations (id, name, slug)
-    VALUES (${organizationId}, 'NovaWorks Enterprise', 'novaworks')
-    ON CONFLICT (slug) DO NOTHING
-  `;
-
-  const adminHash = await bcrypt.hash("admin123", 10);
-  const memberHash = await bcrypt.hash("member123", 10);
-  const viewerHash = await bcrypt.hash("viewer123", 10);
-
-  await sql`
-    INSERT INTO users (id, email, name, password_hash, avatar)
-    VALUES
-      (${adminId}, 'admin@novaworks.ai', 'Ava Chen', ${adminHash}, 'AC'),
-      (${memberId}, 'member@novaworks.ai', 'Marcus Lee', ${memberHash}, 'ML'),
-      (${viewerId}, 'viewer@novaworks.ai', 'Priya Shah', ${viewerHash}, 'PS')
-    ON CONFLICT (email) DO NOTHING
-  `;
-
-  await sql`
-    INSERT INTO memberships (organization_id, user_id, role)
-    VALUES
-      (${organizationId}, ${adminId}, 'admin'),
-      (${organizationId}, ${memberId}, 'member'),
-      (${organizationId}, ${viewerId}, 'viewer')
-    ON CONFLICT DO NOTHING
-  `;
-
-  for (const doc of docs) {
-    const [inserted] = await sql<{ id: string }[]>`
-      INSERT INTO documents (organization_id, uploaded_by_id, title, source_type, mime_type, summary)
-      VALUES (${organizationId}, ${adminId}, ${doc.title}, 'seed', ${doc.mimeType}, ${doc.text.slice(0, 220)})
-      RETURNING id
-    `;
-
-    const chunkTexts = chunkText(doc.text);
-    for (let index = 0; index < chunkTexts.length; index += 1) {
-      const content = chunkTexts[index];
-      await sql`
-        INSERT INTO document_chunks (
-          organization_id,
-          document_id,
-          chunk_index,
-          content,
-          embedding,
-          token_count
-        )
-        VALUES (
-          ${organizationId},
-          ${inserted.id},
-          ${index},
-          ${content},
-          ${vectorLiteral(embedText(content))}::vector,
-          ${estimateTokens(content)}
-        )
-      `;
-    }
+  if (!isDatabaseConfigured()) {
+    console.error("DATABASE_URL is not set. Start Postgres (docker compose up -d) and set it in .env.local first.");
+    process.exit(1);
   }
 
-  await sql`
-    INSERT INTO audit_logs (organization_id, actor_user_id, action, target_type, target_id, metadata)
-    VALUES (${organizationId}, ${adminId}, 'database.seeded', 'organization', ${organizationId}, '{"source":"scripts/seed.ts"}')
-  `;
+  const db = getDb();
 
-  await sql.end();
-  console.log("Seeded Enterprise AI OS demo database.");
+  // 1. Organization
+  let [org] = await db.select().from(organizations).where(eq(organizations.slug, DEMO_ORG_SEED.slug));
+  if (!org) {
+    [org] = await db
+      .insert(organizations)
+      .values({ name: DEMO_ORG_SEED.name, slug: DEMO_ORG_SEED.slug })
+      .returning();
+    console.log(`Created organization ${org.name} (${org.id})`);
+  } else {
+    console.log(`Organization ${org.name} already exists, skipping`);
+  }
+
+  // 2. Users + memberships (bcrypt-hashed passwords)
+  const userIds: Record<string, string> = {};
+  for (const seed of DEMO_USER_SEEDS) {
+    let [user] = await db.select().from(users).where(eq(users.email, seed.email));
+    if (!user) {
+      const passwordHash = await bcrypt.hash(seed.password, 10);
+      [user] = await db
+        .insert(users)
+        .values({ email: seed.email, name: seed.name, passwordHash, avatar: seed.avatar })
+        .returning();
+      await db.insert(memberships).values({ organizationId: org.id, userId: user.id, role: seed.role });
+      console.log(`Created ${seed.role} user ${seed.email}`);
+    } else {
+      console.log(`User ${seed.email} already exists, skipping`);
+    }
+    userIds[seed.role] = user.id;
+  }
+
+  // 3. Documents (real chunk + embed + pgvector persist through the repository)
+  const existingDocs = await db.select().from(documentsTable).where(eq(documentsTable.organizationId, org.id));
+  if (existingDocs.length === 0) {
+    for (const seed of SEED_DOCUMENTS) {
+      const document = await createDocument({
+        organizationId: org.id,
+        title: seed.title,
+        mimeType: seed.mimeType,
+        text: seed.text,
+        uploadedBy: userIds.admin,
+        sourceType: "seed",
+      });
+      console.log(`Indexed "${document.title}" (${document.chunkCount} chunks)`);
+    }
+  } else {
+    console.log(`${existingDocs.length} documents already present, skipping document seed`);
+  }
+
+  // 4. Starter memories
+  const existingMemories = await db.select().from(memoriesTable).where(eq(memoriesTable.organizationId, org.id));
+  if (existingMemories.length === 0) {
+    await writeMemory({
+      organizationId: org.id,
+      type: "semantic",
+      content: "NovaWorks prefers lower-cost local or mock execution for routine analysis and cloud reasoning for complex synthesis.",
+      reason: "Provider-routing preference used by the model router.",
+      importanceScore: 82,
+      decayAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 120).toISOString(),
+    });
+    await writeMemory({
+      organizationId: org.id,
+      type: "episodic",
+      content: "Tool actions that send, publish, schedule, or create external records require an approval audit trail.",
+      reason: "Security policy that influences every tool adapter.",
+      importanceScore: 94,
+      decayAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 180).toISOString(),
+    });
+    console.log("Seeded 2 starter memories");
+  } else {
+    console.log("Memories already present, skipping");
+  }
+
+  // 5. A pending approval so the security/workflow pages show a live gate
+  const existingCalls = await db.select().from(toolCalls).where(eq(toolCalls.organizationId, org.id));
+  if (existingCalls.length === 0) {
+    await db.insert(toolCalls).values({
+      organizationId: org.id,
+      toolName: "calendar",
+      status: "pending_approval",
+      input: { action: "schedule_interview_panel", dryRun: true },
+      output: { preview: "Would create a calendar hold after manager approval." },
+      riskLevel: "medium",
+    });
+    console.log("Seeded 1 pending tool-call approval");
+  } else {
+    console.log("Tool calls already present, skipping");
+  }
+
+  console.log("\nSeed complete. Login: admin@novaworks.ai / admin123");
+  process.exit(0);
 }
 
-main().catch(async (error) => {
-  await sql.end();
-  console.error(error);
+main().catch((error) => {
+  console.error("Seed failed:", error);
   process.exit(1);
 });

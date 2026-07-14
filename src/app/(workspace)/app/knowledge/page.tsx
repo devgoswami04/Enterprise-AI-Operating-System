@@ -5,7 +5,7 @@ import { listDocuments } from "@/lib/data/store";
 
 export default async function KnowledgePage() {
   const session = await requireSession();
-  const documents = listDocuments(session.organizationId);
+  const documents = await listDocuments(session.organizationId);
 
   return (
     <div className="grid gap-6">

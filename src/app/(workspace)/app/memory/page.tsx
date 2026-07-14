@@ -7,8 +7,8 @@ import { getRecentMessages, listMemories } from "@/lib/data/store";
 
 export default async function MemoryPage() {
   const session = await requireSession();
-  const memories = listMemories(session.organizationId);
-  const messages = getRecentMessages(session.organizationId);
+  const memories = await listMemories(session.organizationId);
+  const messages = await getRecentMessages(session.organizationId);
 
   return (
     <div className="grid gap-6">

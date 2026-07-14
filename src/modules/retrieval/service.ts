@@ -5,13 +5,13 @@ import { evaluateRetrieval } from "@/lib/observability/evaluation";
 import { logEvent } from "@/modules/shared/logger";
 import type { SearchQueryInput } from "@/modules/retrieval/schemas";
 
-export function retrieveKnowledge(input: SearchQueryInput & {
+export async function retrieveKnowledge(input: SearchQueryInput & {
   organizationId: string;
   userId?: string;
   requestId?: string;
 }) {
   const assessed = assessInput(input.q);
-  let results = searchKnowledge(input.organizationId, assessed.sanitizedInput, input.limit);
+  let results = await searchKnowledge(input.organizationId, assessed.sanitizedInput, input.limit);
 
   if (input.sourceType) {
     results = results.filter((result) => result.document.sourceType === input.sourceType);

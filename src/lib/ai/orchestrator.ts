@@ -172,8 +172,8 @@ export async function orchestrateChat(session: SessionUser, prompt: string): Pro
       {
         name: "Research Agent",
         retry: { attempts: 2, backoffMs: 50 },
-        run: (state) => {
-          const searchResults = searchKnowledge(session.organizationId, state.prompt, 5);
+        run: async (state) => {
+          const searchResults = await searchKnowledge(session.organizationId, state.prompt, 5);
           const citations = searchToCitations(searchResults);
           return {
             state: { ...state, searchResults, citations },
@@ -184,8 +184,8 @@ export async function orchestrateChat(session: SessionUser, prompt: string): Pro
       },
       {
         name: "Memory Agent",
-        run: (state) => {
-          const recalled = recallRelevantMemory({
+        run: async (state) => {
+          const recalled = await recallRelevantMemory({
             organizationId: session.organizationId,
             query: state.prompt,
             limit: 3,
@@ -336,7 +336,7 @@ export async function orchestrateChat(session: SessionUser, prompt: string): Pro
   const latencyMs = Date.now() - started;
   const steps = graph.steps;
 
-  const run = recordAgentRun({
+  const run = await recordAgentRun({
     organizationId: session.organizationId,
     objective: security.sanitizedInput,
     steps,
@@ -351,7 +351,7 @@ export async function orchestrateChat(session: SessionUser, prompt: string): Pro
     tokensOut: generation.tokensOut,
   });
 
-  recordChatExchange({
+  await recordChatExchange({
     organizationId: session.organizationId,
     userId: session.id,
     prompt: security.sanitizedInput,
@@ -360,7 +360,7 @@ export async function orchestrateChat(session: SessionUser, prompt: string): Pro
     latencyMs,
   });
 
-  writeDurableMemory({
+  await writeDurableMemory({
     organizationId: session.organizationId,
     userId: session.id,
     type: "episodic",
@@ -371,7 +371,7 @@ export async function orchestrateChat(session: SessionUser, prompt: string): Pro
   });
 
   if (security.findings.length) {
-    recordSecurityEvent({
+    await recordSecurityEvent({
       organizationId: session.organizationId,
       actorUserId: session.id,
       riskLevel: security.riskLevel,
@@ -382,7 +382,7 @@ export async function orchestrateChat(session: SessionUser, prompt: string): Pro
     });
   }
 
-  recordEvaluation({
+  await recordEvaluation({
     organizationId: session.organizationId,
     targetType: "chat",
     targetId: run.id,

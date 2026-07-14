@@ -8,7 +8,7 @@ import { hasRole } from "@/lib/security/rbac";
 
 export default async function SecurityPage() {
   const session = await requireSession();
-  const snapshot = getDashboardSnapshot(session.organizationId);
+  const snapshot = await getDashboardSnapshot(session.organizationId);
   const canAdmin = hasRole(session, "admin");
   const visibleSecurityEvents = canAdmin ? snapshot.securityEvents : [];
   const visibleToolCalls = canAdmin ? snapshot.toolCalls : [];

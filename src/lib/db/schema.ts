@@ -271,9 +271,12 @@ export const workflowRuns = pgTable(
     organizationId: uuid("organization_id")
       .references(() => organizations.id)
       .notNull(),
-    workflowId: uuid("workflow_id")
-      .references(() => workflows.id)
-      .notNull(),
+    // Workflow definitions live in code (src/lib/data/definitions.ts) like
+    // Airflow DAGs or Temporal workflows — versioned with the app, not rows
+    // in a table. Runs therefore reference the definition by its stable slug.
+    // The `workflows` table above remains for future org-authored dynamic
+    // definitions.
+    workflowId: text("workflow_id").notNull(),
     requestedById: uuid("requested_by_id").references(() => users.id),
     status: runStatusEnum("status").default("queued").notNull(),
     currentStep: integer("current_step").default(0).notNull(),
@@ -369,5 +372,73 @@ export const usageEvents = pgTable(
   },
   (table) => ({
     organizationIdx: index("usage_events_organization_idx").on(table.organizationId),
+  }),
+);
+
+export const securityEvents = pgTable(
+  "security_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .references(() => organizations.id)
+      .notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id),
+    riskLevel: text("risk_level").notNull(),
+    findings: jsonb("findings").$type<string[]>().default([]).notNull(),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    organizationIdx: index("security_events_organization_idx").on(table.organizationId),
+  }),
+);
+
+export const evaluations = pgTable(
+  "evaluations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .references(() => organizations.id)
+      .notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    groundedness: integer("groundedness").default(0).notNull(),
+    citationCoverage: integer("citation_coverage").default(0).notNull(),
+    retrievalQuality: integer("retrieval_quality").default(0).notNull(),
+    answerRelevance: integer("answer_relevance"),
+    retrievalRelevance: integer("retrieval_relevance"),
+    hallucinationRisk: text("hallucination_risk").notNull(),
+    responseLatencyMs: integer("response_latency_ms"),
+    provider: text("provider"),
+    model: text("model"),
+    policyFlags: jsonb("policy_flags").$type<string[]>().default([]).notNull(),
+    notes: jsonb("notes").$type<string[]>().default([]).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    organizationIdx: index("evaluations_organization_idx").on(table.organizationId),
+  }),
+);
+
+export const workflowRunEvents = pgTable(
+  "workflow_run_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .references(() => organizations.id)
+      .notNull(),
+    workflowRunId: uuid("workflow_run_id")
+      .references(() => workflowRuns.id)
+      .notNull(),
+    type: text("type").notNull(),
+    message: text("message").notNull(),
+    stepIndex: integer("step_index"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    runIdx: index("workflow_run_events_run_idx").on(table.workflowRunId),
   }),
 );

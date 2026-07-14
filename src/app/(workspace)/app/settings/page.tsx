@@ -11,7 +11,7 @@ import { getProviderPosture } from "@/modules/providers/service";
 
 export default async function SettingsPage() {
   const session = await requireSession();
-  const users = getDemoUsers();
+  const users = await getDemoUsers(session.organizationId);
   const health = getSystemHealth();
   const posture = getProviderPosture();
   const integrations = [

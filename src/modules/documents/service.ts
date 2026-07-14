@@ -42,7 +42,7 @@ export async function ingestUploadedDocument(input: {
     "Document ingestion",
   );
 
-  const document = createDocument(validated);
+  const document = await createDocument(validated);
   logEvent(
     "info",
     {

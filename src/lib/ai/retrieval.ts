@@ -28,13 +28,21 @@ function lexicalScore(query: string, content: string) {
   return overlap / queryTokens.size;
 }
 
-export function rankChunks(
+/**
+ * Hybrid semantic + lexical re-ranking given an already-computed query
+ * embedding. Callers that have a real embedding (e.g. the Postgres
+ * repository, which embeds the query with the configured EMBEDDING_PROVIDER)
+ * must use this directly instead of `rankChunks` below — recomputing a mock
+ * hash embedding here would silently compare it against real chunk
+ * embeddings from a different vector space and produce meaningless scores.
+ */
+export function rankChunksWithEmbedding(
+  queryEmbedding: number[],
   query: string,
   chunks: DocumentChunkRecord[],
   documents: DocumentRecord[],
   limit = 5,
 ): SearchResult[] {
-  const queryEmbedding = embedText(query);
   const documentById = new Map(documents.map((document) => [document.id, document]));
 
   return chunks
@@ -48,4 +56,17 @@ export function rankChunks(
     .filter((result): result is SearchResult => Boolean(result.document))
     .sort((left, right) => right.score - left.score)
     .slice(0, limit);
+}
+
+/**
+ * Convenience wrapper for the in-memory mock path: derives the mock hash
+ * embedding for the query itself, then delegates to rankChunksWithEmbedding.
+ */
+export function rankChunks(
+  query: string,
+  chunks: DocumentChunkRecord[],
+  documents: DocumentRecord[],
+  limit = 5,
+): SearchResult[] {
+  return rankChunksWithEmbedding(embedText(query), query, chunks, documents, limit);
 }

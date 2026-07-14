@@ -22,7 +22,7 @@ export function calculateDecayDate(importanceScore: number) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-export function writeDurableMemory(input: {
+export async function writeDurableMemory(input: {
   organizationId: string;
   userId?: string;
   type: "semantic" | "episodic" | "preference";
@@ -32,7 +32,7 @@ export function writeDurableMemory(input: {
   requestId?: string;
 }) {
   const importanceScore = input.importanceScore ?? scoreMemoryImportance({ content: input.content });
-  const memory = writeMemory({
+  const memory = await writeMemory({
     organizationId: input.organizationId,
     userId: input.userId,
     type: input.type,
@@ -59,13 +59,13 @@ export function writeDurableMemory(input: {
   return memory;
 }
 
-export function recallRelevantMemory(input: {
+export async function recallRelevantMemory(input: {
   organizationId: string;
   query: string;
   limit?: number;
   requestId?: string;
 }) {
-  const results = recallMemories(input.organizationId, input.query, input.limit ?? 5);
+  const results = await recallMemories(input.organizationId, input.query, input.limit ?? 5);
   logEvent(
     "info",
     {

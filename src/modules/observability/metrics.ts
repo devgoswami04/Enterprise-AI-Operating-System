@@ -7,8 +7,8 @@ function metric(name: string, value: number, labels: Record<string, string> = {}
   return `${name}${labelText ? `{${labelText}}` : ""} ${value}`;
 }
 
-export function getPrometheusMetrics(organizationId: string) {
-  const snapshot = getDashboardSnapshot(organizationId);
+export async function getPrometheusMetrics(organizationId: string) {
+  const snapshot = await getDashboardSnapshot(organizationId);
   const avgRetrievalQuality = snapshot.evaluations.length
     ? snapshot.evaluations.reduce((sum, item) => sum + item.retrievalQuality, 0) / snapshot.evaluations.length
     : 0;

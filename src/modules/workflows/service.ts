@@ -8,13 +8,13 @@ export async function startQueuedWorkflow(input: {
   workflowId: string;
   requestId?: string;
 }) {
-  const { run, workflow } = startWorkflowRun({
+  const { run, workflow } = await startWorkflowRun({
     organizationId: input.session.organizationId,
     workflowId: input.workflowId,
     requestedBy: input.session.id,
   });
 
-  updateWorkflowRun(input.session.organizationId, run.id, {
+  await updateWorkflowRun(input.session.organizationId, run.id, {
     status: "queued",
     result: "Run persisted and queued for worker execution.",
   });

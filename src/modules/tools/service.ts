@@ -1,4 +1,4 @@
-import { executeTool } from "@/lib/data/store";
+import { resolveToolCall } from "@/lib/data/store";
 import type { SessionUser } from "@/lib/types";
 import { assessInput } from "@/lib/security/controls";
 import { SecurityError } from "@/modules/shared/errors";
@@ -20,20 +20,32 @@ export async function executeToolThroughAdapter(input: {
   }
 
   if (input.payload.decision === "reject") {
-    const call = executeTool({
+    const call = await resolveToolCall({
       organizationId: input.session.organizationId,
       actorUserId: input.session.id,
       toolName: input.toolName,
-      payload: {
-        ...input.payload,
-        rejected: true,
+      toolCallId: input.payload.toolCallId,
+      status: "cancelled",
+      output: {
+        provider: "governance",
+        message: input.payload.reason ?? "Rejected by approver.",
       },
+      payload: { ...input.payload, rejected: true },
     });
-    call.status = "cancelled";
-    call.output = {
-      provider: "governance",
-      message: input.payload.reason ?? "Rejected by approver.",
-    };
+
+    logEvent(
+      "info",
+      {
+        component: "tools",
+        action: "tool.rejected",
+        organizationId: input.session.organizationId,
+        userId: input.session.id,
+        requestId: input.requestId,
+      },
+      "Tool action rejected by approver",
+      { toolName: input.toolName, toolCallId: call.id },
+    );
+
     return call;
   }
 
@@ -45,21 +57,21 @@ export async function executeToolThroughAdapter(input: {
     dryRun: input.payload.decision !== "approve",
   });
 
-  const call = executeTool({
+  const call = await resolveToolCall({
     organizationId: input.session.organizationId,
     actorUserId: input.session.id,
     toolName: input.toolName,
+    toolCallId: input.payload.toolCallId,
+    status: adapterResult.dryRun ? "dry_run" : "executed",
+    output: {
+      ...adapterResult,
+      securityFindings: assessment.findings,
+    },
     payload: {
       ...input.payload,
-      toolCallId: input.payload.toolCallId,
       adapter: adapter.name,
     },
   });
-  call.output = {
-    ...adapterResult,
-    securityFindings: assessment.findings,
-  };
-  call.status = adapterResult.dryRun ? "dry_run" : "executed";
 
   logEvent(
     adapterResult.dryRun ? "info" : "warn",

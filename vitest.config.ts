@@ -1,14 +1,18 @@
+import path from "node:path";
 import { defineConfig } from "vitest/config";
-import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    // Memory-store module state is per-process; isolate files so suites
+    // can't observe each other's writes.
+    isolate: true,
+    pool: "forks",
   },
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@": path.resolve(__dirname, "./src"),
     },
   },
 });

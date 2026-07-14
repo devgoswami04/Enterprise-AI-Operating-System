@@ -35,7 +35,7 @@ export async function GET(request: Request) {
       },
       "Search query",
     );
-    const retrieval = retrieveKnowledge({
+    const retrieval = await retrieveKnowledge({
       ...parsed,
       organizationId: session.organizationId,
       userId: session.id,

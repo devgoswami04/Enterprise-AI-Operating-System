@@ -1,7 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { findDemoUser, toSessionUser } from "@/lib/data/store";
+import { authenticateUser } from "@/lib/data/store";
 import type { SessionUser } from "@/lib/types";
 
 const SESSION_COOKIE = "enterprise_ai_os_session";
@@ -73,9 +73,5 @@ export async function requireApiSession() {
 }
 
 export async function authenticateDemoUser(email: string, password: string) {
-  const user = findDemoUser(email);
-  if (!user || user.password !== password) {
-    return null;
-  }
-  return toSessionUser(user);
+  return authenticateUser(email, password);
 }

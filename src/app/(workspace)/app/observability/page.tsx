@@ -10,7 +10,7 @@ import { listStructuredLogs } from "@/modules/shared/logger";
 
 export default async function ObservabilityPage() {
   const session = await requireSession();
-  const snapshot = getDashboardSnapshot(session.organizationId);
+  const snapshot = await getDashboardSnapshot(session.organizationId);
   const health = getSystemHealth();
   const structuredLogs = listStructuredLogs(session.organizationId).slice(0, 8);
   const avgLatency = snapshot.usageEvents.length
